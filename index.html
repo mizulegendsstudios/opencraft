@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Equis Cero Online</title>
+  <style>
+    table { border-collapse: collapse; margin: 20px auto; }
+    td { width: 60px; height: 60px; text-align: center; font-size: 2em; border: 1px solid #000; cursor: pointer; }
+  </style>
+</head>
+<body>
+<h2 style="text-align:center">Juego Equis Cero</h2>
+<table id="tablero"></table>
+
+<script>
+const url = "https://jsonhosting.com/api/json/cc684825"; // tu JSON en la nube
+
+// Renderizar tablero
+function render(tablero) {
+  const table = document.getElementById("tablero");
+  table.innerHTML = "";
+  tablero.forEach((fila, i) => {
+    const tr = document.createElement("tr");
+    fila.forEach((celda, j) => {
+      const td = document.createElement("td");
+      td.textContent = celda;
+      td.onclick = () => jugar(i, j);
+      tr.appendChild(td);
+    });
+    table.appendChild(tr);
+  });
+}
+
+// Obtener estado del servidor
+async function getEstado() {
+  const res = await fetch(url);
+  const data = await res.json();
+  render(data.tablero);
+  turno = data.turno;
+}
+let turno = "X";
+
+// Jugar
+async function jugar(i, j) {
+  const res = await fetch(url);
+  const data = await res.json();
+
+  if (data.tablero[i][j] === "") {
+    data.tablero[i][j] = data.turno;
+    data.turno = (data.turno === "X") ? "O" : "X";
+
+    await fetch(url, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data)
+    });
+    getEstado();
+  }
+}
+
+// Actualizar cada 2 segundos
+setInterval(getEstado, 2000);
+getEstado();
+</script>
+</body>
+</html>
