@@ -1,14 +1,89 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <title>Mizu MOBA - Prototipo Persistente</title>
-    <style> body { margin: 0; overflow: hidden; } </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mizu Online - Prueba de Conexión</title>
+    <style>
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            height: 100vh; 
+            margin: 0; 
+            background-color: #0f172a; 
+            color: #f8fafc; 
+        }
+        h1 { margin-bottom: 5px; font-size: 1.8rem; color: #38bdf8; }
+        #status { margin-bottom: 20px; font-weight: 500; color: #94a3b8; height: 1.5rem; }
+        
+        .board { 
+            display: grid; 
+            grid-template-columns: repeat(3, 1fr); 
+            gap: 12px; 
+            width: 90vw; 
+            max-width: 320px; 
+            aspect-ratio: 1; 
+        }
+        
+        .cell { 
+            background-color: #1e293b; 
+            border-radius: 12px; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            font-size: 3.5rem; 
+            font-weight: 800; 
+            cursor: pointer; 
+            user-select: none; 
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        }
+        
+        .cell:hover { background-color: #334155; transform: translateY(-2px); }
+        .cell.x { color: #38bdf8; } /* Azul Mizu */
+        .cell.o { color: #f43f5e; } /* Rojo Competitivo */
+        
+        #resetBtn { 
+            margin-top: 40px; 
+            padding: 12px 24px; 
+            font-size: 1rem; 
+            font-weight: 600;
+            cursor: pointer; 
+            background-color: #10b981; 
+            color: white; 
+            border: none; 
+            border-radius: 8px; 
+            transition: background 0.2s; 
+        }
+        
+        #resetBtn:hover { background-color: #059669; }
+    </style>
 </head>
 <body>
+
+    <h1>Tic Tac Toe Online</h1>
+    <div id="status">Conectando a la nube...</div>
+
+    <div class="board" id="board">
+        <div class="cell" data-index="0"></div>
+        <div class="cell" data-index="1"></div>
+        <div class="cell" data-index="2"></div>
+        <div class="cell" data-index="3"></div>
+        <div class="cell" data-index="4"></div>
+        <div class="cell" data-index="5"></div>
+        <div class="cell" data-index="6"></div>
+        <div class="cell" data-index="7"></div>
+        <div class="cell" data-index="8"></div>
+    </div>
+
+    <button id="resetBtn">Reiniciar Partida</button>
+
     <script type="importmap">
     {
         "imports": {
-            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
             "firebase/app": "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js",
             "firebase/database": "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js"
         }
@@ -16,82 +91,95 @@
     </script>
 
     <script type="module">
-        import * as THREE from 'three';
         import { initializeApp } from 'firebase/app';
-        import { getDatabase, ref, set, onValue, update } from 'firebase/database';
+        import { getDatabase, ref, set, onValue } from 'firebase/database';
 
-        // 1. CONFIGURACIÓN FIREBASE (Crea un proyecto gratis en console.firebase.google.com)
+        // CONFIGURACIÓN USANDO TU URL
         const firebaseConfig = {
-            databaseURL: "TU_URL_DE_FIREBASE_AQUI"
+            databaseURL: "https://faketime-ab4fb-default-rtdb.firebaseio.com/" 
         };
+        
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
+        const gameRef = ref(db, 'mizu_game'); 
 
-        // 2. ESCENA BÁSICA THREE.JS
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
+        let gameState = {
+            board: Array(9).fill(""),
+            currentPlayer: "X",
+            winner: null
+        };
 
-        // Suelo (El mundo donde construirán)
-        const floor = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), new THREE.MeshBasicMaterial({color: 0x333333}));
-        floor.rotation.x = -Math.PI / 2;
-        scene.add(floor);
-        camera.position.z = 10; camera.position.y = 5; camera.lookAt(0,0,0);
+        const cells = document.querySelectorAll('.cell');
+        const statusDisplay = document.getElementById('status');
+        const resetBtn = document.getElementById('resetBtn');
 
-        // 3. LÓGICA DE JUGADORES
-        const myId = "player_" + Math.floor(Math.random() * 1000); // ID temporal
-        const players = {}; // Aquí guardaremos los cubos de otros
-
-        function createPlayerCube(id, color) {
-            const geometry = new THREE.BoxGeometry(1, 1, 1);
-            const material = new THREE.MeshBasicMaterial({ color: color });
-            const cube = new THREE.Mesh(geometry, material);
-            scene.add(cube);
-            return cube;
-        }
-
-        // MI CUBO (Local)
-        const myCube = createPlayerCube(myId, 0x00ff00);
-
-        // 4. PERSISTENCIA EN TIEMPO REAL
-        // Escuchar cambios en la "nube"
-        const playersRef = ref(db, 'players/');
-        onValue(playersRef, (snapshot) => {
+        // Escuchar cambios de otros jugadores
+        onValue(gameRef, (snapshot) => {
             const data = snapshot.val();
-            for (let id in data) {
-                if (id === myId) continue; // Ignorar mi propio cubo
-                
-                if (!players[id]) {
-                    players[id] = createPlayerCube(id, 0xff0000); // Enemigo/Vecino
-                }
-                // Actualizar posición XYZ al instante
-                players[id].position.set(data[id].x, data[id].y, data[id].z);
+            if (!data) {
+                resetGameCloud();
+                return;
             }
+            gameState = data;
+            updateUI();
         });
 
-        // Mover con teclado y GUARDAR en la nube
-        window.addEventListener('keydown', (e) => {
-            if (e.key === "ArrowUp") myCube.position.z -= 0.5;
-            if (e.key === "ArrowDown") myCube.position.z += 0.5;
-            if (e.key === "ArrowLeft") myCube.position.x -= 0.5;
-            if (e.key === "ArrowRight") myCube.position.x += 0.5;
+        function updateUI() {
+            cells.forEach((cell, index) => {
+                const value = gameState.board[index];
+                cell.textContent = value;
+                cell.className = `cell ${value.toLowerCase()}`;
+            });
 
-            // ESTO es lo que verán los demás al instante:
-            update(ref(db, 'players/' + myId), {
-                x: myCube.position.x,
-                y: myCube.position.y,
-                z: myCube.position.z,
-                name: "Jugador " + myId
+            if (gameState.winner === "draw") {
+                statusDisplay.textContent = "¡Es un empate!";
+            } else if (gameState.winner) {
+                statusDisplay.textContent = `¡El jugador ${gameState.winner} ha ganado!`;
+            } else {
+                statusDisplay.textContent = `Turno actual: ${gameState.currentPlayer}`;
+            }
+        }
+
+        cells.forEach(cell => {
+            cell.addEventListener('click', () => {
+                const index = cell.getAttribute('data-index');
+
+                if (gameState.board[index] !== "" || gameState.winner) return;
+
+                // Actualizar tablero
+                gameState.board[index] = gameState.currentPlayer;
+                
+                // Lógica de victoria
+                if (checkWinner()) {
+                    gameState.winner = gameState.currentPlayer;
+                } else if (!gameState.board.includes("")) {
+                    gameState.winner = "draw";
+                } else {
+                    gameState.currentPlayer = gameState.currentPlayer === "X" ? "O" : "X";
+                }
+
+                // Sincronizar con Firebase
+                set(gameRef, gameState);
             });
         });
 
-        function animate() {
-            requestAnimationFrame(animate);
-            renderer.render(scene, camera);
+        function checkWinner() {
+            const wins = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+            return wins.some(comb => {
+                const [a, b, c] = comb;
+                return gameState.board[a] && gameState.board[a] === gameState.board[b] && gameState.board[a] === gameState.board[c];
+            });
         }
-        animate();
+
+        resetBtn.addEventListener('click', resetGameCloud);
+
+        function resetGameCloud() {
+            set(gameRef, {
+                board: Array(9).fill(""),
+                currentPlayer: "X",
+                winner: null
+            });
+        }
     </script>
 </body>
 </html>
