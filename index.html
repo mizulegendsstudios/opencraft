@@ -3,83 +3,56 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mizu Online - Prueba de Conexión</title>
+    <title>Mizu MOBA - Identity Lab</title>
     <style>
-        body { 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            justify-content: center; 
-            height: 100vh; 
-            margin: 0; 
-            background-color: #0f172a; 
-            color: #f8fafc; 
-        }
-        h1 { margin-bottom: 5px; font-size: 1.8rem; color: #38bdf8; }
-        #status { margin-bottom: 20px; font-weight: 500; color: #94a3b8; height: 1.5rem; }
+        body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: white; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
+        .container { display: grid; grid-template-columns: 1fr 300px; gap: 20px; width: 100%; max-width: 900px; }
         
-        .board { 
-            display: grid; 
-            grid-template-columns: repeat(3, 1fr); 
-            gap: 12px; 
-            width: 90vw; 
-            max-width: 320px; 
-            aspect-ratio: 1; 
-        }
+        /* Login Overlay */
+        #login-screen { position: fixed; inset: 0; background: #0f172a; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; }
+        input { padding: 10px; border-radius: 5px; border: none; margin: 10px; width: 200px; }
         
-        .cell { 
-            background-color: #1e293b; 
-            border-radius: 12px; 
-            display: flex; 
-            align-items: center; 
-            justify-content: center; 
-            font-size: 3.5rem; 
-            font-weight: 800; 
-            cursor: pointer; 
-            user-select: none; 
-            transition: all 0.2s ease;
-            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-        }
+        /* Player & Inventory */
+        .card { background: #1e293b; padding: 15px; border-radius: 10px; margin-bottom: 10px; border-left: 4px solid #38bdf8; }
+        .inventory-item { display: inline-block; background: #334155; padding: 4px 8px; border-radius: 4px; margin: 2px; font-size: 0.8rem; }
         
-        .cell:hover { background-color: #334155; transform: translateY(-2px); }
-        .cell.x { color: #38bdf8; } /* Azul Mizu */
-        .cell.o { color: #f43f5e; } /* Rojo Competitivo */
+        /* Chat */
+        #chat-box { background: #1e293b; height: 300px; border-radius: 10px; display: flex; flex-direction: column; }
+        #messages { flex-grow: 1; overflow-y: auto; padding: 10px; font-size: 0.9rem; }
+        #chat-input { background: #0f172a; border: 1px solid #334155; color: white; padding: 10px; border-radius: 0 0 10px 10px; }
         
-        #resetBtn { 
-            margin-top: 40px; 
-            padding: 12px 24px; 
-            font-size: 1rem; 
-            font-weight: 600;
-            cursor: pointer; 
-            background-color: #10b981; 
-            color: white; 
-            border: none; 
-            border-radius: 8px; 
-            transition: background 0.2s; 
-        }
+        .msg { margin-bottom: 5px; }
+        .msg b { color: #38bdf8; }
         
-        #resetBtn:hover { background-color: #059669; }
+        button { cursor: pointer; background: #38bdf8; border: none; padding: 10px; border-radius: 5px; font-weight: bold; }
+        .hidden { display: none !important; }
     </style>
 </head>
 <body>
 
-    <h1>Tic Tac Toe Online</h1>
-    <div id="status">Conectando a la nube...</div>
-
-    <div class="board" id="board">
-        <div class="cell" data-index="0"></div>
-        <div class="cell" data-index="1"></div>
-        <div class="cell" data-index="2"></div>
-        <div class="cell" data-index="3"></div>
-        <div class="cell" data-index="4"></div>
-        <div class="cell" data-index="5"></div>
-        <div class="cell" data-index="6"></div>
-        <div class="cell" data-index="7"></div>
-        <div class="cell" data-index="8"></div>
+    <div id="login-screen">
+        <h1>Mizu Identity System</h1>
+        <input type="text" id="username-input" placeholder="Tu nombre de usuario...">
+        <button id="start-btn">Entrar al Mundo</button>
     </div>
 
-    <button id="resetBtn">Reiniciar Partida</button>
+    <h1>Mizu Online: Session 1</h1>
+
+    <div class="container">
+        <div id="world-section">
+            <h3>Jugadores Online</h3>
+            <div id="players-list"></div>
+            <button id="add-item-btn" style="margin-top: 20px; background: #10b981;">Añadir "Madera" al Inventario</button>
+        </div>
+
+        <div id="chat-section">
+            <h3>Chat de Equipo</h3>
+            <div id="chat-box">
+                <div id="messages"></div>
+                <input type="text" id="chat-input" placeholder="Escribe un mensaje...">
+            </div>
+        </div>
+    </div>
 
     <script type="importmap">
     {
@@ -92,94 +65,90 @@
 
     <script type="module">
         import { initializeApp } from 'firebase/app';
-        import { getDatabase, ref, set, onValue } from 'firebase/database';
+        import { getDatabase, ref, set, onValue, push, serverTimestamp, onDisconnect } from 'firebase/database';
 
-        // CONFIGURACIÓN USANDO TU URL
-        const firebaseConfig = {
-            databaseURL: "https://faketime-ab4fb-default-rtdb.firebaseio.com/" 
-        };
-        
+        const firebaseConfig = { databaseURL: "https://faketime-ab4fb-default-rtdb.firebaseio.com/" };
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
-        const gameRef = ref(db, 'mizu_game'); 
 
-        let gameState = {
-            board: Array(9).fill(""),
-            currentPlayer: "X",
-            winner: null
+        let myId = null;
+        let myUsername = "";
+
+        // --- LÓGICA DE IDENTIDAD ---
+        document.getElementById('start-btn').onclick = () => {
+            myUsername = document.getElementById('username-input').value || "Aprendiz_" + Math.floor(Math.random()*100);
+            myId = "uid_" + Date.now(); // ID único basado en tiempo
+            
+            // Crear mi jugador en la nube
+            const myRef = ref(db, 'players/' + myId);
+            set(myRef, {
+                username: myUsername,
+                inventory: ["Poción Inicial"],
+                lastSeen: serverTimestamp()
+            });
+
+            // Si cierro la pestaña, borrarme de la lista (Auto-limpieza)
+            onDisconnect(myRef).remove();
+
+            document.getElementById('login-screen').classList.add('hidden');
         };
 
-        const cells = document.querySelectorAll('.cell');
-        const statusDisplay = document.getElementById('status');
-        const resetBtn = document.getElementById('resetBtn');
-
-        // Escuchar cambios de otros jugadores
-        onValue(gameRef, (snapshot) => {
-            const data = snapshot.val();
-            if (!data) {
-                resetGameCloud();
-                return;
+        // --- LÓGICA DE JUGADORES e INVENTARIO ---
+        onValue(ref(db, 'players'), (snapshot) => {
+            const players = snapshot.val();
+            const listDiv = document.getElementById('players-list');
+            listDiv.innerHTML = "";
+            
+            for(let id in players) {
+                const p = players[id];
+                const invHtml = p.inventory ? p.inventory.map(item => `<span class="inventory-item">${item}</span>`).join('') : '';
+                listDiv.innerHTML += `
+                    <div class="card">
+                        <b>${p.username}</b> ${id === myId ? '(Tú)' : ''}
+                        <div style="margin-top:5px;">${invHtml}</div>
+                    </div>
+                `;
             }
-            gameState = data;
-            updateUI();
         });
 
-        function updateUI() {
-            cells.forEach((cell, index) => {
-                const value = gameState.board[index];
-                cell.textContent = value;
-                cell.className = `cell ${value.toLowerCase()}`;
-            });
-
-            if (gameState.winner === "draw") {
-                statusDisplay.textContent = "¡Es un empate!";
-            } else if (gameState.winner) {
-                statusDisplay.textContent = `¡El jugador ${gameState.winner} ha ganado!`;
-            } else {
-                statusDisplay.textContent = `Turno actual: ${gameState.currentPlayer}`;
-            }
-        }
-
-        cells.forEach(cell => {
-            cell.addEventListener('click', () => {
-                const index = cell.getAttribute('data-index');
-
-                if (gameState.board[index] !== "" || gameState.winner) return;
-
-                // Actualizar tablero
-                gameState.board[index] = gameState.currentPlayer;
-                
-                // Lógica de victoria
-                if (checkWinner()) {
-                    gameState.winner = gameState.currentPlayer;
-                } else if (!gameState.board.includes("")) {
-                    gameState.winner = "draw";
-                } else {
-                    gameState.currentPlayer = gameState.currentPlayer === "X" ? "O" : "X";
+        // Modificar Inventario (Simular recoger madera para el puente)
+        document.getElementById('add-item-btn').onclick = () => {
+            if(!myId) return;
+            const myInventoryRef = ref(db, `players/${myId}/inventory`);
+            // Obtenemos el inventario actual para añadirle algo
+            onValue(myInventoryRef, (snap) => {
+                const current = snap.val() || [];
+                if(!current.includes("Madera")) { // Evitar duplicados en este ejemplo
+                    set(myInventoryRef, [...current, "Madera"]);
                 }
+            }, { onlyOnce: true });
+        };
 
-                // Sincronizar con Firebase
-                set(gameRef, gameState);
-            });
+        // --- LÓGICA DE CHAT ---
+        const chatInput = document.getElementById('chat-input');
+        chatInput.onkeypress = (e) => {
+            if(e.key === 'Enter' && chatInput.value !== "") {
+                const chatRef = ref(db, 'messages');
+                push(chatRef, {
+                    user: myUsername,
+                    text: chatInput.value,
+                    time: serverTimestamp()
+                });
+                chatInput.value = "";
+            }
+        };
+
+        onValue(ref(db, 'messages'), (snapshot) => {
+            const msgs = snapshot.val();
+            const msgDiv = document.getElementById('messages');
+            msgDiv.innerHTML = "";
+            for(let id in msgs) {
+                const m = msgs[id];
+                msgDiv.innerHTML += `<div class="msg"><b>${m.user}:</b> ${m.text}</div>`;
+            }
+            msgDiv.scrollTop = msgDiv.scrollHeight;
         });
 
-        function checkWinner() {
-            const wins = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
-            return wins.some(comb => {
-                const [a, b, c] = comb;
-                return gameState.board[a] && gameState.board[a] === gameState.board[b] && gameState.board[a] === gameState.board[c];
-            });
-        }
-
-        resetBtn.addEventListener('click', resetGameCloud);
-
-        function resetGameCloud() {
-            set(gameRef, {
-                board: Array(9).fill(""),
-                currentPlayer: "X",
-                winner: null
-            });
-        }
     </script>
 </body>
 </html>
