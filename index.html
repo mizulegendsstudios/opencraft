@@ -1,4 +1,100 @@
 <!DOCTYPE html>
+<html lang="es">
+<head>
+    <title>Mizu MOBA - Prototipo Persistente</title>
+    <style> body { margin: 0; overflow: hidden; } </style>
+</head>
+<body>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "firebase/app": "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js",
+            "firebase/database": "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js"
+        }
+    }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { initializeApp } from 'firebase/app';
+        import { getDatabase, ref, set, onValue, update } from 'firebase/database';
+
+        // 1. CONFIGURACIÓN FIREBASE (Crea un proyecto gratis en console.firebase.google.com)
+        const firebaseConfig = {
+            databaseURL: "TU_URL_DE_FIREBASE_AQUI"
+        };
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        // 2. ESCENA BÁSICA THREE.JS
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Suelo (El mundo donde construirán)
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), new THREE.MeshBasicMaterial({color: 0x333333}));
+        floor.rotation.x = -Math.PI / 2;
+        scene.add(floor);
+        camera.position.z = 10; camera.position.y = 5; camera.lookAt(0,0,0);
+
+        // 3. LÓGICA DE JUGADORES
+        const myId = "player_" + Math.floor(Math.random() * 1000); // ID temporal
+        const players = {}; // Aquí guardaremos los cubos de otros
+
+        function createPlayerCube(id, color) {
+            const geometry = new THREE.BoxGeometry(1, 1, 1);
+            const material = new THREE.MeshBasicMaterial({ color: color });
+            const cube = new THREE.Mesh(geometry, material);
+            scene.add(cube);
+            return cube;
+        }
+
+        // MI CUBO (Local)
+        const myCube = createPlayerCube(myId, 0x00ff00);
+
+        // 4. PERSISTENCIA EN TIEMPO REAL
+        // Escuchar cambios en la "nube"
+        const playersRef = ref(db, 'players/');
+        onValue(playersRef, (snapshot) => {
+            const data = snapshot.val();
+            for (let id in data) {
+                if (id === myId) continue; // Ignorar mi propio cubo
+                
+                if (!players[id]) {
+                    players[id] = createPlayerCube(id, 0xff0000); // Enemigo/Vecino
+                }
+                // Actualizar posición XYZ al instante
+                players[id].position.set(data[id].x, data[id].y, data[id].z);
+            }
+        });
+
+        // Mover con teclado y GUARDAR en la nube
+        window.addEventListener('keydown', (e) => {
+            if (e.key === "ArrowUp") myCube.position.z -= 0.5;
+            if (e.key === "ArrowDown") myCube.position.z += 0.5;
+            if (e.key === "ArrowLeft") myCube.position.x -= 0.5;
+            if (e.key === "ArrowRight") myCube.position.x += 0.5;
+
+            // ESTO es lo que verán los demás al instante:
+            update(ref(db, 'players/' + myId), {
+                x: myCube.position.x,
+                y: myCube.position.y,
+                z: myCube.position.z,
+                name: "Jugador " + myId
+            });
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+        animate();
+    </script>
+</body>
+</html><!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
