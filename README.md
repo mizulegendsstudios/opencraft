@@ -1,4 +1,4 @@
-# Mizu MOBA – Identity Lab
+# Open Chat
 
 A lightweight multiplayer identity and team inventory prototype built with vanilla JavaScript and Firebase Realtime Database.  
 Players log in with a username, see a live list of other players and their inventories, and chat in real time.  
